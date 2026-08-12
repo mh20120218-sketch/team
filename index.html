@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>팀 매칭 시스템 (실시간)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDK 로드 -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+    <!-- 프로필 설정 모달 -->
+    <div id="profileModal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl">
+            <h3 class="text-xl font-bold text-gray-800 mb-2">프로필 설정</h3>
+            <p class="text-sm text-gray-500 mb-4">팀 만들기 및 참가를 위해 정보를 입력해 주세요.</p>
+            <form onsubmit="handleSaveProfile(event)">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">이름 (실명)</label>
+                    <input type="text" id="userRealName" placeholder="예: 홍길동" required class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">닉네임</label>
+                    <input type="text" id="userMcName" placeholder="예: Steve_123" required class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+                <button type="submit" class="w-full bg-blue-600 text-white py-2.5 rounded-lg font-bold hover:bg-blue-700 transition">입장하기</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-8 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+            <div>
+                <h1 class="text-2xl font-black text-gray-800 flex items-center gap-2">
+                    <span class="text-blue-600">👥</span> 팀
+                </h1>
+                <p id="userInfoDisplay" class="text-sm text-gray-500 mt-1">내 정보: 미설정</p>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="openProfileModal()" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200 transition">내 정보 수정</button>
+                <button onclick="openCreateTeamModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition">+ 팀 만들기</button>
+            </div>
+        </header>
+
+        <!-- Team List -->
+        <main>
+            <h2 class="text-lg font-bold text-gray-800 mb-4">현재 생성된 팀 목록</h2>
+            <div id="teamsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- 팀 카드가 동적으로 추가됩니다 -->
+            </div>
+        </main>
+    </div>
+
+    <!-- 팀 만들기 모달 -->
+    <div id="createTeamModal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl">
+            <h3 class="text-xl font-bold text-gray-800 mb-4">새로운 팀 만들기</h3>
+            <form onsubmit="handleCreateTeam(event)">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">팀 이름</label>
+                    <input type="text" id="teamTitle" placeholder="예: 팀원 모집합니다" required class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">최대 인원</label>
+                    <input type="number" id="teamMax" min="2" max="10" value="4" required class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">팀 설명</label>
+                    <textarea id="teamDesc" placeholder="팀 설명 및 관련 정보를 자유롭게 적어주세요." class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none h-24"></textarea>
+                </div>
+                <div class="flex gap-2 justify-end">
+                    <button type="button" onclick="closeCreateTeamModal()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-300 transition">취소</button>
+                    <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition">만들기</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // 🔑 Firebase 설정 및 초기화
+        const firebaseConfig = {
+            apiKey: "AIzaSyBCA3fPi1mzCKk9WxTidLs70GjBoKPmLP0",
+            authDomain: "mc-team-9b31d.firebaseapp.com",
+            projectId: "mc-team-9b31d",
+            storageBucket: "mc-team-9b31d.firebasestorage.app",
+            messagingSenderId: "694551970021",
+            appId: "1:694551970021:web:976c475f511953fb26d40c",
+            measurementId: "G-2KZSRRGXQH"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        let currentUser = JSON.parse(localStorage.getItem('mc_user')) || null;
+        let teams = [];
+
+        function init() {
+            if (!currentUser) {
+                openProfileModal();
+            } else {
+                document.getElementById('profileModal').classList.add('hidden');
+                updateUserDisplay();
+            }
+
+            // 🔥 Firestore 실시간 리스너 연결
+            db.collection('teams').onSnapshot(snapshot => {
+                teams = [];
+                snapshot.forEach(doc => {
+                    teams.push({ id: doc.id, ...doc.data() });
+                });
+                renderTeams();
+            });
+        }
+
+        function openProfileModal() {
+            if (currentUser) {
+                document.getElementById('userRealName').value = currentUser.realName;
+                document.getElementById('userMcName').value = currentUser.mcName;
+            }
+            document.getElementById('profileModal').classList.remove('hidden');
+        }
+
+        function handleSaveProfile(e) {
+            e.preventDefault();
+            currentUser = {
+                realName: document.getElementById('userRealName').value.trim(),
+                mcName: document.getElementById('userMcName').value.trim()
+            };
+            localStorage.setItem('mc_user', JSON.stringify(currentUser));
+            document.getElementById('profileModal').classList.add('hidden');
+            updateUserDisplay();
+            renderTeams();
+        }
+
+        function updateUserDisplay() {
+            document.getElementById('userInfoDisplay').textContent = 
+                `내 정보: ${currentUser.realName} (${currentUser.mcName})`;
+        }
+
+        function renderTeams() {
+            const container = document.getElementById('teamsContainer');
+            if (teams.length === 0) {
+                container.innerHTML = `<div class="col-span-2 text-center py-12 text-gray-400 bg-white rounded-xl border border-dashed">생성된 팀이 없습니다. 먼저 팀을 만들어보세요!</div>`;
+                return;
+            }
+
+            container.innerHTML = teams.map(team => {
+                const requests = team.requests || [];
+                const members = team.members || [];
+                
+                const isLeader = currentUser && team.leader.mcName === currentUser.mcName;
+                const isMember = currentUser && members.some(m => m.mcName === currentUser.mcName);
+                const isRequested = currentUser && requests.some(r => r.mcName === currentUser.mcName);
+                const isFull = members.length >= team.max;
+
+                return `
+                    <div class="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between">
+                        <div>
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="font-bold text-lg text-gray-800">${escapeHtml(team.title)}</h3>
+                                <span class="px-2.5 py-1 text-xs font-bold rounded-full ${isFull ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-700'}">
+                                    ${members.length} / ${team.max}명
+                                </span>
+                            </div>
+                            <p class="text-gray-600 text-sm mb-4">${escapeHtml(team.desc || '설명 없음')}</p>
+                            
+                            <!-- 확정된 팀원 목록 -->
+                            <div class="bg-gray-50 p-3 rounded-lg mb-3 text-xs">
+                                <span class="font-bold text-gray-500 block mb-1">팀원 목록:</span>
+                                <div class="flex flex-wrap gap-1">
+                                    ${members.map(m => `
+                                        <span class="bg-white border text-gray-700 px-2 py-0.5 rounded shadow-sm">
+                                            ${escapeHtml(m.realName)} (${escapeHtml(m.mcName)}) ${m.mcName === team.leader.mcName ? '👑' : ''}
+                                        </span>
+                                    `).join('')}
+                                </div>
+                            </div>
+
+                            <!-- 팀장 전용: 참가 요청 대기 목록 -->
+                            ${isLeader && requests.length > 0 ? `
+                                <div class="bg-amber-50 border border-amber-200 p-3 rounded-lg mb-4 text-xs">
+                                    <span class="font-bold text-amber-800 block mb-2">📩 참가 요청 대기 중 (${requests.length}명)</span>
+                                    <div class="space-y-2">
+                                        ${requests.map(r => `
+                                            <div class="flex items-center justify-between bg-white p-2 rounded border border-amber-100 shadow-sm">
+                                                <span class="text-gray-700 font-medium">${escapeHtml(r.realName)} (${escapeHtml(r.mcName)})</span>
+                                                <div class="flex gap-1">
+                                                    <button onclick="acceptRequest('${team.id}', '${r.mcName}')" class="bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 text-xs font-bold transition">승인</button>
+                                                    <button onclick="rejectRequest('${team.id}', '${r.mcName}')" class="bg-gray-300 text-gray-700 px-2 py-1 rounded hover:bg-gray-400 text-xs font-bold transition">거절</button>
+                                                </div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <div class="flex gap-2 mt-2">
+                            ${isLeader ? `
+                                <button onclick="deleteTeam('${team.id}')" class="w-full bg-red-50 hover:bg-red-100 text-red-600 py-2 rounded-lg text-sm font-semibold transition">팀 삭제</button>
+                            ` : isMember ? `
+                                <button onclick="leaveTeam('${team.id}')" class="w-full bg-orange-50 hover:bg-orange-100 text-orange-600 py-2 rounded-lg text-sm font-semibold transition">팀 탈퇴</button>
+                            ` : isRequested ? `
+                                <button onclick="cancelRequest('${team.id}')" class="w-full bg-amber-100 text-amber-700 hover:bg-amber-200 py-2 rounded-lg text-sm font-semibold transition">참가 요청 취소 (대기 중...)</button>
+                            ` : `
+                                <button onclick="requestJoinTeam('${team.id}')" ${isFull ? 'disabled' : ''} class="w-full ${isFull ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'} py-2 rounded-lg text-sm font-semibold transition">
+                                    ${isFull ? '인원 차감' : '참가 요청하기'}
+                                </button>
+                            `}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function openCreateTeamModal() {
+            if (!currentUser) { openProfileModal(); return; }
+
+            // ⚠️ 1명당 1개의 팀만 생성 가능한지 검사
+            const alreadyHasTeam = teams.some(t => t.leader.mcName === currentUser.mcName);
+            if (alreadyHasTeam) {
+                alert('이미 생성한 팀이 있습니다. 1명당 1개의 팀만 생성할 수 있습니다.');
+                return;
+            }
+
+            document.getElementById('createTeamModal').classList.remove('hidden');
+        }
+
+        function closeCreateTeamModal() {
+            document.getElementById('createTeamModal').classList.add('hidden');
+        }
+
+        async function handleCreateTeam(e) {
+            e.preventDefault();
+
+            // 중복 생성 이중 체크
+            const alreadyHasTeam = teams.some(t => t.leader.mcName === currentUser.mcName);
+            if (alreadyHasTeam) {
+                alert('이미 생성한 팀이 있습니다. 1명당 1개의 팀만 생성할 수 있습니다.');
+                closeCreateTeamModal();
+                return;
+            }
+
+            const title = document.getElementById('teamTitle').value.trim();
+            const max = parseInt(document.getElementById('teamMax').value);
+            const desc = document.getElementById('teamDesc').value.trim();
+
+            const newTeam = {
+                title,
+                max,
+                desc,
+                leader: currentUser,
+                members: [currentUser],
+                requests: [], // 참가 요청 목록
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+
+            await db.collection('teams').add(newTeam);
+
+            document.getElementById('teamTitle').value = '';
+            document.getElementById('teamDesc').value = '';
+            closeCreateTeamModal();
+        }
+
+        // 참가 요청하기
+        async function requestJoinTeam(teamId) {
+            if (!currentUser) { openProfileModal(); return; }
+            const teamRef = db.collection('teams').doc(teamId);
+            const doc = await teamRef.get();
+            if (doc.exists) {
+                const team = doc.data();
+                const requests = team.requests || [];
+                if (!requests.some(r => r.mcName === currentUser.mcName)) {
+                    requests.push(currentUser);
+                    await teamRef.update({ requests });
+                }
+            }
+        }
+
+        // 참가 요청 취소
+        async function cancelRequest(teamId) {
+            const teamRef = db.collection('teams').doc(teamId);
+            const doc = await teamRef.get();
+            if (doc.exists) {
+                const team = doc.data();
+                const requests = (team.requests || []).filter(r => r.mcName !== currentUser.mcName);
+                await teamRef.update({ requests });
+            }
+        }
+
+        // 팀장이 요청 승인
+        async function acceptRequest(teamId, targetMcName) {
+            const teamRef = db.collection('teams').doc(teamId);
+            const doc = await teamRef.get();
+            if (doc.exists) {
+                const team = doc.data();
+                const members = team.members || [];
+                const requests = team.requests || [];
+
+                if (members.length >= team.max) {
+                    alert('팀 정원이 이미 가득 찼습니다.');
+                    return;
+                }
+
+                const targetUser = requests.find(r => r.mcName === targetMcName);
+                if (targetUser) {
+                    const updatedMembers = [...members, targetUser];
+                    const updatedRequests = requests.filter(r => r.mcName !== targetMcName);
+                    await teamRef.update({
+                        members: updatedMembers,
+                        requests: updatedRequests
+                    });
+                }
+            }
+        }
+
+        // 팀장이 요청 거절
+        async function rejectRequest(teamId, targetMcName) {
+            const teamRef = db.collection('teams').doc(teamId);
+            const doc = await teamRef.get();
+            if (doc.exists) {
+                const team = doc.data();
+                const requests = (team.requests || []).filter(r => r.mcName !== targetMcName);
+                await teamRef.update({ requests });
+            }
+        }
+
+        async function leaveTeam(teamId) {
+            const teamRef = db.collection('teams').doc(teamId);
+            const doc = await teamRef.get();
+            if (doc.exists) {
+                const team = doc.data();
+                const updatedMembers = (team.members || []).filter(m => m.mcName !== currentUser.mcName);
+                await teamRef.update({ members: updatedMembers });
+            }
+        }
+
+        async function deleteTeam(teamId) {
+            if (confirm('정말로 팀을 삭제하시겠습니까?')) {
+                await db.collection('teams').doc(teamId).delete();
+            }
+        }
+
+        function escapeHtml(str) {
+            return str ? str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;") : '';
+        }
+
+        init();
+    </script>
+</body>
+</html>
